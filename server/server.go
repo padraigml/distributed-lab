@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"flag"
-	"net"
 	"fmt"
+	"net"
 )
 
 type Message struct {
@@ -12,33 +12,34 @@ type Message struct {
 	message string
 }
 
-func handleError(err error) {
-	// TODO: all
-	// Deal with an error event.
+func handleError(err error, conn net.Conn) {
+	if err.Error() == "EOF" {
+		fmt.Println("okay mate")
+		conn.Close()
+	}
+
 }
 
 func acceptConns(ln net.Listener, conns chan net.Conn) {
-	// TODO: all
-	// Continuously accept a network connection from the Listener
-	// and add it to the channel for handling connections.
 	for {
-	    conn, _ := ln.Accept()
-	    conns <- conn
+		conn, e := ln.Accept()
+		if e != nil {
+			handleError(e, conn)
+		}
+		conns <- conn
 	}
 }
 
 func handleClient(client net.Conn, clientid int, msgs chan Message) {
-	// TODO: all
-	// So long as this connection is alive:
-	// Read in new messages as delimited by '\n's
-	// Tidy up each message and add it to the messages channel,
-	// recording which client it came from.
 	reader := bufio.NewReader(client)
 	for {
-	    msg, _ := reader.ReadString('\n')
-	    m := Message{sender: clientid, message: msg}
+		msg, e := reader.ReadString('\n')
+		if e != nil {
+			handleError(e, client)
+		}
+		m := Message{sender: clientid, message: msg}
 
-        msgs <- m
+		msgs <- m
 	}
 }
 
@@ -48,8 +49,7 @@ func main() {
 	portPtr := flag.String("port", ":8030", "port to listen on")
 	flag.Parse()
 
-	//TODO Create a Listener for TCP connections on the port given above.
-    ln, _ := net.Listen("tcp", *portPtr)
+	ln, _ := net.Listen("tcp", *portPtr)
 
 	//Create a channel for connections
 	conns := make(chan net.Conn)
@@ -63,22 +63,14 @@ func main() {
 	for {
 		select {
 		case conn := <-conns:
-			// TODO Deal with a new connection
-			// - assign a client ID - DONE
 			id := len(clients)
 			clients[id] = conn
-			// - add the client to the clients channel
-			// - start to asynchronously handle messages from this client
-            go handleClient(conn, id, msgs)
+			go handleClient(conn, id, msgs)
 		case msg := <-msgs:
-			// TODO Deal with a new message
-			// Send the message to all clients that aren't the sender
-			// I need to loop through the connections, and send the message to all of them.
-			// ill figure out how to not send it to the sender afterwards.
 			for i := 0; i < len(clients); i++ {
-			    if (clients[i] != clients[msg.sender]) {
-			        fmt.Fprintf(clients[i], msg.message)
-			    }
+				if clients[i] != clients[msg.sender] {
+					fmt.Fprintf(clients[i], msg.message)
+				}
 			}
 		}
 	}
